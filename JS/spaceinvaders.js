@@ -1,6 +1,4 @@
-import {Vector2} from './vector.js'
-import {Collision} from './collision.js'
 
-let v = new Vector2(1, 2);
-
-console.log(v);
+function randomInt(max) {
+    return Math.floor(Math.random() * Math.floor(max));
+}
