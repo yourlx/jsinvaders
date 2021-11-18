@@ -39,7 +39,7 @@ export class Entity
 
     static DirectionChange(entity)
     {
-        entity.#direction.y -= 1;
+        entity.#direction.y *= -1;
     }
 }
 
