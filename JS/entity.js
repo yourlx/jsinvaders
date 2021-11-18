@@ -1,4 +1,4 @@
-// import {Vector2} from './vector.js'
+import {Vector2} from './vector.js'
 import {Collision} from './collision.js'
 
 export class Entity
@@ -22,10 +22,20 @@ export class Entity
         this.#hp = hp;
     }
     
-    // get direction()
-    // {
-    //     return new Vector2(this.#direction.x, this.#direction.y);
-    // }
+    get position()
+    {
+        return new Vector2(this.#position.x, this.#position.y);
+    }
+
+    get width()
+    {
+        return this.#width;
+    }
+
+    get height()
+    {
+        return this.#height;
+    }
 
     Collider()
     {
