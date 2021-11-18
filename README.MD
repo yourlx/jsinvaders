@@ -1,2 +1,2 @@
-<h1>dsadasdasda</h1>
-Игра спейс инвадорс \nfetch
+<h1>Space Invaders on JS</h1>
+Space Invaders clone using JS, HMTL and CSS
