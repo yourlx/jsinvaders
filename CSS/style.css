@@ -1,4 +1,4 @@
-body {
+body{ 
     width: 100%;
     height: 100%;
     margin: 0;
@@ -14,7 +14,7 @@ body {
     left: 0px;
     top: 0px;
 }
-#game {
+#games{
     margin-top: 5%;
     width: 400px;
     margin-left: auto;
@@ -24,10 +24,4 @@ body {
 #gameCanvas { 
     width: 400px;
     height: 600px;
-}
-#button {
-    margin-top: 1%;
-    width: 100px;
-    margin-left: auto;
-    margin-right: auto;
 }

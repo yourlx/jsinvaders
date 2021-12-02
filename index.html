@@ -8,19 +8,12 @@
     <title>Space invaders</title>
 </head>
 <body>
-    <div id="game">
+    <div id="stars"></div>
+    <div id="games">
         <canvas id="gameCanvas" width="400" height="600"></canvas>
     </div>
 
-    <div id="button">
-        <button id="startButton" onclick="game.start(); canvas.focus();">Играть</button>
-    </div>
-
-    <!-- <script src="JS/vector.js" type='module'></script> -->
-    <!-- <script src="JS/collision.js" type='module'></script> -->
-    <!-- <script src="JS/entity.js" type='module'></script> -->
-    <!-- <script src="JS/enemy.js" type='module'></script> -->
-
-    <script src="JS/spaceinvaders.js" type='module'></script>
+    <button id="start_button" onclick="game.start(); canvas.focus();">Call game.start()</button>
+    <script src="JS/spaceinvaders.js"></script>
 </body>
 </html>

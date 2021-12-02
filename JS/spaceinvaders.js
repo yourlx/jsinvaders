@@ -147,11 +147,11 @@ Player.prototype.moveLeft = function (enable) {
 Player.prototype.fire = function () {
     if("fire" && canShoot) {
         canShoot = false;
-        game.addEntity(new Projectile(this.position,
+        game.addEntity( new Projectile( this.position,
                                         180,
                                         new Vector2d(0, -1),
                                         "player" ));
-        setTimeout(function() {canShoot=true;}, 350)
+        setTimeout(function() {canShoot=true;}, 500)
     }
 };
 
@@ -181,7 +181,7 @@ function Enemy(position, speed, direction, rank) {
     this.dropTarget = 0;
     this.dropAmount = 1;
     this.timer = 0;
-    this.firePercent = 500;
+    this.firePercent = 10;
     this.fireWait = Math.random() * 5;
 }
 Enemy.prototype = Object.create(Entity.prototype);
@@ -416,7 +416,7 @@ var game = (function () {
         _gameFieldRect = new Rectangle(0, 0, 400, 600);
         _enemiesRect = new Rectangle(0, 0, 0, 0);
         _enemySpeed = 100;
-        _enemyFirePercent = 500;
+        _enemyFirePercent = 15;
         _enemyDropAmount = 10;
         _projectiles = [];
         _livesRemaining = 2;
