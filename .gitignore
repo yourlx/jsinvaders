@@ -1,2 +1,6 @@
 *.txt
 .vscode
+*.o
+*.o*.o
+*.o
+*.o
