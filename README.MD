@@ -6,22 +6,17 @@
   - [Инструкция по запуску](#инструкция-по-запуску)
   - [Space Invaders (Космические захватчики)](#space-invaders-космические-захватчики)
     - [Структура игры](#структура-игры)
-      - [HTML-canvas](#html-canvas)
+      - [HTML-файл](#html-файл)
       - [2D vector](#2d-vector)
       - [Rectangle (Simplified coliders)](#rectangle-simplified-coliders)
       - [Entity](#entity)
+      - [Projectile](#projectile)
       - [Enemy](#enemy)
       - [Player](#player)
-      - [Render](#render)
       - [Physics](#physics)
+      - [Renderer](#renderer)
       - [Game](#game)
-    - [Управление](#управление)
-      - [Movement](#movement)
-      - [Shooting](#shooting)
-    - [ИИ противников](#ии-противников)
-      - [Movement](#movement-1)
-    - [Коллизии](#коллизии)
-      - [Projectile](#projectile)
+      - [Управление](#управление)
   - [Исходный код](#исходный-код)
 
 
@@ -36,15 +31,29 @@
 
 ### Структура игры
 
-#### HTML-canvas
+#### HTML-файл
 
 Сетка врагов будет состоять из 16 столбцов и 6 строк. Для этого нам понанобится холст размером 400x600. Для этого создадим стартовую страницу index.html, добавим блок \<div> в \<body>:
 
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="CSS/style.css">
+        <title>Space invaders</title>
+    </head>
     <body>
         <div id="games">
             <canvas id="gameCanvas" width="400" height="600"></canvas>
         </div>
+
+        <button id="start_button" onclick="game.start(); canvas.focus();">Call game.start()</button>
+        <script src="JS/spaceinvaders.js"></script>
     </body>
+    </html>
+
 
 #### 2D vector
 
@@ -122,7 +131,7 @@
 
     Rectangle.prototype.intersects = function (r2) {
         return this.right() >= r2.left() && this.left() <= r2.right() &&
-               this.top() <= r2.bottom() && this.bottom() >= r2.top();
+            this.top() <= r2.bottom() && this.bottom() >= r2.top();
     };
 
     function rectUnion(r1, r2) {
@@ -168,18 +177,47 @@
 
     Entity.prototype.collisionRect = function () {
         return new Rectangle(this.position.x - this.width/2,
-                             this.position.y - this.height/2,
-                             this.width,
-                             this.height);
+                            this.position.y - this.height/2,
+                            this.width,
+                            this.height);
     };
+
+#### Projectile
+
+Projectile (снаряд) - наследуется от базовой сущности Entity, что упрощает взаимодейсвтие с другими объектами. Для удаления объекта достаточно нанести урон, который "убьёт" снаряд. В дальнейшем, благодаря коллизии, соприкосновение с данным объектом будет нанесём урон обеим сущностям.
+
+    function Projectile(position, speed, direction, type) {
+        Entity.call(this, position, speed, direction);
+
+        this.width = 1;
+        this.height = 5;
+        this.type = type;
+    }
+    Projectile.prototype = Object.create(Entity.prototype);
 
 #### Enemy
 
-Враги наследуют Entity и добавляется свойство rank для определения иерархии врагов. 
 
 | функции                       | краткое описание                             |
 | ----------------------------- | -------------------------------------------- |
 | update( dt )  	            | вызывается каждый кадр                       |
+| randomInt( max )              | функция генерации случайного целого числа    |
+| fire ( position )             | метод класса Enemy для ведения огня          |
+
+    function randomInt(max) {
+        return Math.floor(Math.random() * Math.floor(max));
+    }
+
+Враги наследуют Entity и добавляется свойство rank для определения иерархии врагов.
+Помимо полей Entity классу Enemy необходимы следующие свойства
+
+| свойства      | описание                     |
+| ------------- | ---------------------------- |
+| dropTarget    | напрвление движения          |
+| dropAmount    | шаг спуска                   |
+| timer         | счётчик                      |
+| firePercent   | шанс выстрела после задержки |
+| fireWait      | задержка до выстрела         |
 
     function Enemy(position, speed, direction, rank) {
         Entity.call(this, position, speed, direction);
@@ -187,47 +225,234 @@
         this.width = 13;
         this.height = 10;
         this.rank = rank;
-    }
 
+        this.dropTarget = 0;
+        this.dropAmount = 1;
+        this.timer = 0;
+        this.firePercent = 10;
+        this.fireWait = Math.random() * 5;
+    }
     Enemy.prototype = Object.create(Entity.prototype);
 
+
+Логика поведения объектов класса Enemy
+
     Enemy.prototype.update = function (dt) {
+
+        // Edge collision
+        var enemiesLeft = game.enemiesRect().left(),
+            enemiesRight = game.enemiesRect().right(),
+            edgeMargin = 5,
+            gameLeftEdge = game.gameFieldRect().left() + edgeMargin,
+            gameRightEdge = game.gameFieldRect().right() - edgeMargin;
+
         Entity.prototype.update.call(this, dt);
-        if( this.collisionRect().top() <= 0 ||
-            this.collisionRect().bottom() >= game.gameFieldRect().bottom() ) {
-            this.direction.y *= -1;
+
+        // Drop if the enemiesRect hits an edge margin
+        if( (this.direction.x < 0 && enemiesLeft < gameLeftEdge) ||
+            (this.direction.x > 0 && enemiesRight > gameRightEdge) ) {
+            this.dropTarget += this.dropAmount;
         }
+
+        // Determine Direction
+        if( this.position.y < this.dropTarget ) {
+            this.direction = new Vector2d(0, 1);
+        }
+        else if( this.direction.y > 0 ) {
+            this.direction = (enemiesRight > gameRightEdge) ?
+                                new Vector2d(-1, 0) :
+                                new Vector2d(1, 0);
+        }
+
+        // Determine Firing Weapon
+        var p = vectorAdd(this.position, new Vector2d(0, 5));
+
+        function existsUnderneath(e) {
+            var rect = e.collisionRect();
+            return p.y <= rect.top() &&
+                    rect.left() <= p.x && p.x <= rect.right();
+        }
+
+        this.timer += dt;
+        if( this.timer > this.fireWait ) {
+            this.timer = 0;
+            this.fireWait = 1 + Math.random() * 4;
+
+            if( randomInt(100) < this.firePercent &&
+                !game.enemies().find(existsUnderneath) ) {
+                this.fire(p);
+            }
+        }
+    };
+
+    Enemy.prototype.fire = function (position) {
+        game.addEntity( new Projectile( position,
+                                        60,
+                                        new Vector2d(0, 1),
+                                        "enemy") );
     };
 
 #### Player
 
 Игрок наследуют Entity.
 
-| функции                       | краткое описание                             |
-| ----------------------------- | -------------------------------------------- |
-| update( dt )  	            | вызывается каждый кадр                       |
+| функции                       | краткое описание                   |
+| ----------------------------- | ---------------------------------- |
+| update( dt )  	            | вызывается каждый кадр             |
+| updateDirection( )            | изменение положения объекта        |
+| move\<direction\>( state )    | метод управления в разные стороны  |
+| fire( )  	                    | стрельба                           |
+| cheat( )  	                | стрельба без задержки              |
+
+| свойства             | описание                                             |
+| -------------------- | ---------------------------------------------------- |
+| moving\<direction\>  | свойства отвечающие за текущее направление движения  |
+| canShoot             | булево свойство отвечающее за возможность стрелять   |
 
     function Player(position, speed, direction) {
         Entity.call(this, position, speed, direction);
 
         this.width = 20;
         this.height = 10;
+
+        this.movingLeft = false;
+        this.movingRight = false;
     }
     Player.prototype = Object.create(Entity.prototype);
 
-    Player.prototype.update = function (dt) {
-        Entity.prototype.update.call(this, dt);
-        if( this.collisionRect().top() <= 0 ||
-            this.collisionRect().bottom() >= game.gameFieldRect().bottom() ) {
-            this.direction.y *= -1;
+    Player.prototype.updateDirection = function () {
+        var direction = new Vector2d(0, 0);
+        if( this.movingLeft ) {
+            direction = vectorAdd( direction, new Vector2d(-1, 0) );
+        }
+        if( this.movingRight ) {
+            direction = vectorAdd( direction, new Vector2d(1, 0) );
+        }
+
+        this.direction = direction;
+    };
+
+    Player.prototype.moveRight = function (enable) {
+        this.movingRight = enable;
+        this.updateDirection();
+    };
+
+    Player.prototype.moveLeft = function (enable) {
+        this.movingLeft = enable;
+        this.updateDirection();
+    };
+
+    Player.prototype.fire = function () {
+        if("fire" && canShoot) {
+            canShoot = false;
+            game.addEntity( new Projectile( this.position,
+                                            180,
+                                            new Vector2d(0, -1),
+                                            "player" ));
+            setTimeout(function() {canShoot=true;}, 500)
         }
     };
 
-#### Render
+    Player.prototype.cheat = function() {
+        game.addEntity( new Projectile( this.position,
+            180,
+            new Vector2d(0, -1),
+            "player" ));
+    }
+
+    var canShoot=true;
+
+    Player.prototype.update = function (dt) {
+        Entity.prototype.update.call(this, dt);
+    };
+
+#### Physics
+
+Физика в нашей игре простая, класс physics перебирает все объекты, просчитывает столкновения, обновляет положения объектов в зависимости от их типа, после в действие вступает класс renderer, который и отрисовывает картинку.
+
+    var physics = (function () {
+
+        function _update(dt) {
+            var i, j,
+                entities = game.entities(),
+                enemies = game.enemies(),
+                projectiles = game.projectiles(),
+                player = game.player();
+
+            for( i=entities.length-1; i>=0; i-- ) {
+                var e = entities[i];
+                velocity = vectorScalarMultiply( e.direction,
+                                                e.speed );
+
+                e.position = vectorAdd( e.position,
+                                        vectorScalarMultiply( velocity,
+                                                            dt ) );
+            }
+
+            // Collision Detection
+            var collisionPairs = [];
+
+            // Enemies vs Player
+            for( i=enemies.length-1; i>=0; i-- ) {
+                collisionPairs.push( { entity0: enemies[i],
+                                    entity1: player } );
+            }
+
+            // Projectiles vs other Entities
+            for( i=projectiles.length-1; i>=0; i-- ) {
+
+                // Enemy Projectiles vs Player
+                if( projectiles[i].type === "enemy") {
+                    collisionPairs.push( { entity0: projectiles[i],
+                                        entity1: player } );
+                }
+
+                // Player Projectiles vs Enemies
+                if( projectiles[i].type === "player" ) {
+                    for( j=enemies.length-1; j>=0; j-- ) {
+                        collisionPairs.push( { entity0: projectiles[i],
+                                            entity1: enemies[j] } );
+                    }
+                }
+            }
+
+            // Collision Check
+            for( i=collisionPairs.length-1; i>=0; i-- ) {
+                var e0 = collisionPairs[i].entity0;
+                var e1 = collisionPairs[i].entity1;
+
+                if( e0 && e1 && e0.collisionRect().intersects(e1.collisionRect()) ) {
+                    // Resolve Collision
+                    e0.hp -= 1;
+                    e1.hp -= 1;
+                }
+            }
+
+            // Enemy vs floor (special case)
+            if( game.enemiesRect() && player &&
+                game.enemiesRect().bottom() > player.collisionRect().bottom() ) {
+                game.setGameOver();
+            }
+
+            // Projectile leaves game field (special case)
+            for( i=projectiles.length-1; i>=0; i-- ) {
+                var proj = projectiles[i];
+                if( !game.gameFieldRect().intersects(proj.collisionRect()) ) {
+                    proj.hp -= 1;
+                }
+            }
+        }
+
+        return {
+            update: _update
+        };
+    })();
+
+#### Renderer
 
 > Рендер - процесс создания финального изображения или последовательности из изображений на основе двухмерных или трехмерных данных.
 
-В нашем случае позиция является центром объекта, поэтому мы заполняем объект цветом определённым образом. В результате мы получим однотонные цветные прямоугольники.
+В нашем случае позиция является центром объекта, поэтому мы заполняем объект цветом определённым образом. В результате мы получим однотонные цветные прямоугольники. Противники имеют свой цвет, который зависит от их свойства Rank (высоты относительно других объектов класса Enemy).
 
 | функции                           | краткое описание                  |
 | --------------------------------- | --------------------------------- |
@@ -237,19 +462,22 @@
     var renderer = (function () {
         var _canvas = document.getElementById("gameCanvas"),
             _context = _canvas.getContext("2d"),
-            _enemyColors = ["rgb(150, 7, 7)",
-                            "rgb(150, 89, 7)",
-                            "rgb(56, 150, 7)",
-                            "rgb(7, 150, 122)",
-                            "rgb(46, 7, 150)"];
+            _enemyColors = ["rgb(255, 0, 0)",
+                            "rgb(255,165,0)",
+                            "rgb(255, 255, 0)",
+                            "rgb(0,255,0)",
+                            "rgb(0,255,255)",
+                            "rgb(0,0,255)"],
+            _projectileColors = {"player": "rgb(196, 208, 106)",
+                                "enemy": "rgb(96, 195, 96)"};
 
 
         function _drawRectangle(color, entity) {
             _context.fillStyle = color;
             _context.fillRect(entity.position.x-entity.width/2,
-                              entity.position.y-entity.height/2,
-                              entity.width,
-                              entity.height);
+                            entity.position.y-entity.height/2,
+                            entity.width,
+                            entity.height);
         }
 
         function _render(dt) {
@@ -269,6 +497,9 @@
                 else if( entity instanceof Player ) {
                     _drawRectangle("rgb(255, 255, 0)", entity);
                 }
+                else if( entity instanceof Projectile ) {
+                    _drawRectangle(_projectileColors[entity.type], entity);
+                }
             }
         }
 
@@ -277,61 +508,72 @@
         };
     })();
 
-#### Physics
-
-Позже сюда добавим функции обработки коллизии
-
-    var physics = (function () {
-
-        function _update(dt) {
-            var i,
-                e,
-                velocity,
-                entities = game.entities();
-
-            for( i=entities.length-1; i>=0; i-- ) {
-                e = entities[i];
-                velocity = vectorScalarMultiply( e.direction, e.speed );
-
-                e.position = vectorAdd( e.position, vectorScalarMultiply( velocity, dt ) );
-            }
-        }
-
-        return {
-            update: _update
-        };
-    })();
-
 #### Game
 
 Тут сконцентрирована вся логика и нужная информация для объектов. Частично реализуется паттерн singleton. Фактически объект Game является точкой входа и реализует связи между группами объектов.
 > хочется пить ?
 
-| функции                   | краткое описание                 |
-| ------------------------- | -------------------------------- |
-| start()	                | фактическая точка входа и сброса |
-| _addEntity(entity)        | создание объекта                 |
-| _removeEntities(entities) | уничтожение объекта              |
-| _update()                 | обновление каждый кадр           |
+| функции                   | краткое описание                       |
+| ------------------------- | -------------------------------------- |
+| start()	                | фактическая точка входа и сброса       |
+| _addEntity(entity)        | создание объекта                       |
+| _removeEntities(entities) | уничтожение объекта                    |
+| _update()                 | обновление каждый кадр                 |
+| _addScore(score)          | добавляет очки к счёту игрока          |
+| _setGameOver()            | замораживает логику игры при проигрыше |
+
+| свойства                  | описание                                                          |
+| ------------------------- | ----------------------------------------------------------------- |
+| _entities                 | общий массив объектов                                             |
+| _enemies                  | массив врагов                                                     |
+| _projectiles              | массив снарядов                                                   |
+| _player                   | игрок                                                             |
+| _gameFieldRect            | размер поля                                                       |
+| _started                  | флаг, отвечающий за старт игры                                    |
+| _lastFrameTime            | время кадра                                                       |
+| _enemiesRect              | коллизия врагов                                                   |
+| _enemySpeed               | скорость врагов (обратно пропорциональна количеству врагов)       |
+| _enemyFirePercent         | смотреть класс Enemy (обратно пропорциональна количеству врагов)  |
+| _enemyDropAmount          | смотреть класс Enemy (обратно пропорциональна количеству врагов)  |
+| _livesRemaining           | количество жизней игрока                                          |
+| _gameOver                 | флаг конца игры                                                   |
+| _score                    | счёт игрока                                                       |
+| _highScores               | рекорд                                                            |
 
     var game = (function () {
         var _entities,
             _enemies,
             _player,
             _gameFieldRect,
-            _started = false;
+            _started = false,
+            _lastFrameTime,
+            _enemiesRect,
+            _enemySpeed,
+            _enemyFirePercent,
+            _enemyDropAmount,
+            _projectiles,
+            _livesRemaining,
+            _gameOver,
+            _score,
+            _highScores;
 
         function _start() {
+            _lastFrameTime = 0;
+
             _entities = [];
             _enemies = [];
-            _gameFieldRect = new Rectangle(0, 0, 300, 180);
+            _gameFieldRect = new Rectangle(0, 0, 400, 600);
+            _enemiesRect = new Rectangle(0, 0, 0, 0);
+            _enemySpeed = 100;
+            _enemyFirePercent = 15;
+            _enemyDropAmount = 10;
+            _projectiles = [];
+            _livesRemaining = 2;
+            _gameOver = false;
+            _score = 0;
+            _highScores = [];
 
-            this.addEntity(new Player( new Vector2d(100, 175), 25, new Vector2d(0, -1)));
-            this.addEntity(new Enemy(new Vector2d(20, 25), 20, new Vector2d(0, 1), 0));
-            this.addEntity(new Enemy(new Vector2d(50, 25), 10, new Vector2d(0, 1), 1));
-            this.addEntity(new Enemy(new Vector2d(80, 25), 15, new Vector2d(0, 1), 2));
-            this.addEntity(new Enemy(new Vector2d(120, 25), 25, new Vector2d(0, 1), 3));
-            this.addEntity(new Enemy(new Vector2d(140, 25), 30, new Vector2d(0, 1), 4));
+            this.addEntity( new Player( new Vector2d(200, 595), 90, new Vector2d(0, 0)) );
 
             if( !_started ) {
                 window.requestAnimationFrame(this.update.bind(this));
@@ -349,6 +591,10 @@
             if( entity instanceof Enemy ) {
                 _enemies.push(entity);
             }
+
+            if( entity instanceof Projectile ) {
+                _projectiles.push(entity);
+            }
         }
 
         function _removeEntities(entities) {
@@ -357,25 +603,111 @@
             function isNotInEntities(item) { return !entities.includes(item); }
             _entities = _entities.filter(isNotInEntities);
             _enemies = _enemies.filter(isNotInEntities);
+            _projectiles = _projectiles.filter(isNotInEntities);
 
             if(entities.includes(_player)) {
                 _player = undefined;
             }
         }
 
-        function _update() {
-            var dt = 1/60; // Fixed 60 frames per second time step
+        function _update(time) {
+            var i, j,
+                dt = Math.min((time - _lastFrameTime) / 1000, 3/60);
+
+            _lastFrameTime = time;
+
+            if( _gameOver ) {
+                _started = false;
+                return;
+            }
+
+            // Update Physics
             physics.update(dt);
 
-            var i;
+            // Calculate the bounding rectangle around the enemies
+            _enemiesRect = _enemies.reduce(function(rect, e) {
+                                return rectUnion(rect, e.collisionRect());
+                            },
+                            undefined);
+
+            // Update Entities
             for( i=_entities.length-1; i>=0; i-- ) {
                 _entities[i].update(dt);
             }
 
+            // Delete dead objects.
+            var removeEntities = [];
+            for( i=_entities.length-1; i>=0; i-- ) {
+                var e = _entities[i];
+                if( e.hp <= 0 ) {
+                    removeEntities.push(e);
+
+                    if( e instanceof Enemy ) {
+                        _score += e.rank + 1;
+                    }
+
+                    else if( e instanceof Player ) {
+                        _livesRemaining--;
+                        this.addEntity( new Player( new Vector2d(200, 595), 90, new Vector2d(0, 0) ));
+                    }
+                }
+            }
+            _removeEntities(removeEntities);
+
+            // Update Enemy Speed
+            var speed = _enemySpeed + (_enemySpeed*(1-(_enemies.length/50)));
+            for( i=_enemies.length-1; i>=0; i-- ) {
+                _enemies[i].speed = speed;
+            }
+
+            // Create new Enemies if there are 0
+            if( _enemies.length === 0 ) {
+                for( i=0; i<16; i++) {
+                    for( j=0; j<6; j++) {
+                        var dropTarget = 10+j*15,
+                            position = new Vector2d(60 + i*17.5, dropTarget-100),
+                            direction = new Vector2d(1, 0),
+                            rank = 5-j,
+                            enemy = new Enemy(position,
+                                            _enemySpeed,
+                                            direction,
+                                            rank);
+
+                        enemy.dropTarget = dropTarget;
+                        enemy.firePercent = _enemyFirePercent;
+                        enemy.dropAmount = _enemyDropAmount;
+
+                        this.addEntity( enemy );
+                    }
+                }
+
+                _enemySpeed += 1;
+                _enemyFirePercent += 2;
+                _enemyDropAmount += 1;
+            }
+
+            // Check for Game Over
+            if( _livesRemaining < 0 && !_gameOver ) {
+                _setGameOver();
+            }
+
+            // Render the frame
             renderer.render(dt);
 
             window.requestAnimationFrame(this.update.bind(this));
         }
+
+        function _addScore(score) {
+            _highScores.push(score);
+            _highScores.sort(function(a, b){return b-a});
+            _highScores = _highScores.slice(0, 10);
+        }
+
+        function _setGameOver() {
+            _gameOver = true;
+            _addScore(Math.round(game.score()));
+        }
+
 
         return {
             start: _start,
@@ -384,23 +716,163 @@
             entities: function () { return _entities; },
             enemies: function () { return _enemies; },
             player: function () { return _player; },
-            gameFieldRect: function () { return _gameFieldRect; }
+            gameFieldRect: function () { return _gameFieldRect; },
+            enemiesRect: function () { return _enemiesRect; },
+            projectiles: function () { return _projectiles; },
+            score: function () { return _score; },
+            highScores: function () { return _highScores; },
+            livesRemaining: function () { return _livesRemaining; },
+            gameOver: function () { return _gameOver; },
+            setGameOver: _setGameOver
+        };
+
+    })();
+
+#### Управление
+
+Управление игрой разделено на несколько логических частей. Действия игрока (playerActions), привязка клавиш (keyBindings). Реализация управления - события (events) в JavaScript.
+
+PlayerActions - класс обёртка, реализующий управление игроком на основе логических значений ввода вместо обработки нажатия клавиш напрямую.
+
+    var playerActions = (function () {
+        var _ongoingActions = [];
+
+        function _startAction(id, playerAction) {
+            if( playerAction === undefined ) {
+                return;
+            }
+
+            var f,
+                acts = {"moveLeft":  function () { if(game.player()) game.player().moveLeft(true); },
+                        "moveRight": function () { if(game.player()) game.player().moveRight(true); },
+                        "fire":      function () { if(game.player()) game.player().fire(); },
+                        "cheat":      function () { if(game.player()) game.player().cheat(); } };
+
+            if(f = acts[playerAction]) f();
+
+            _ongoingActions.push( {identifier:id, playerAction:playerAction} );
+        }
+
+        function _endAction(id) {
+            var f,
+                acts = {"moveLeft":  function () { if(game.player()) game.player().moveLeft(false); },
+                        "moveRight": function () { if(game.player()) game.player().moveRight(false); } };
+
+            var idx = _ongoingActions.findIndex(function(a) { return a.identifier === id; });
+
+            if (idx >= 0) {
+                if(f = acts[_ongoingActions[idx].playerAction]) f();
+                _ongoingActions.splice(idx, 1);  // remove action at idx
+            }
+        }
+
+        return {
+            startAction: _startAction,
+            endAction: _endAction
         };
     })();
 
-### Управление
+Конфигурация игровой раскладки управления.
 
-#### Movement
-#### Shooting
+    var keybinds = { 32: "fire",
+                    37: "moveLeft",
+                    38: "cheat",
+                    39: "moveRight" };
 
-### ИИ противников
+    function keyDown(e) {
+        var x = e.which || e.keyCode;  // which or keyCode depends on browser support
 
-#### Movement
+        if( keybinds[x] !== undefined ) {
+            e.preventDefault();
+            playerActions.startAction(x, keybinds[x]);
+        }
+    }
 
-### Коллизии
+    function keyUp(e) {
+        var x = e.which || e.keyCode;
 
-#### Projectile
+        if( keybinds[x] !== undefined ) {
+            e.preventDefault();
+            playerActions.endAction(x);
+        }
+    }
+
+    document.body.addEventListener('keydown', keyDown);
+    document.body.addEventListener('keyup', keyUp);
+
+Методы работающие на событиях JavaScript. Благодаря этой части кода пользователь и взаимодействует с игровым миром.
+
+    function getRelativeTouchCoords(touch) {
+        function getOffsetLeft( elem ) {
+            var offsetLeft = 0;
+            do {
+                if( !isNaN( elem.offsetLeft ) ) {
+                    offsetLeft += elem.offsetLeft;
+                }
+            }
+            while( elem = elem.offsetParent );
+            return offsetLeft;
+        }
+
+        function getOffsetTop( elem ) {
+            var offsetTop = 0;
+            do {
+                if( !isNaN( elem.offsetTop ) ) {
+                    offsetTop += elem.offsetTop;
+                }
+            }
+            while( elem = elem.offsetParent );
+            return offsetTop;
+        }
+
+        var scale = game.gameFieldRect().width / canvas.clientWidth;
+        var x = touch.pageX - getOffsetLeft(canvas);
+        var y = touch.pageY - getOffsetTop(canvas);
+
+        return { x: x*scale,
+                y: y*scale };
+    }
+
+    function touchStart(e) {
+        var touches = e.changedTouches,
+            touchLocation,
+            playerAction;
+
+        e.preventDefault();
+
+        for( var i=touches.length-1; i>=0; i-- ) {
+            touchLocation = getRelativeTouchCoords(touches[i]);
+
+            if( touchLocation.x < game.gameFieldRect().width*(1/5) ) {
+                playerAction = "moveLeft";
+            }
+            else if( touchLocation.x < game.gameFieldRect().width*(4/5) ) {
+                playerAction = "fire";
+            }
+            else {
+                playerAction = "moveRight";
+            }
+
+            playerActions.startAction(touches[i].identifier, playerAction);
+        }
+    }
+
+    function touchEnd(e) {
+        var touches = e.changedTouches;
+        e.preventDefault();
+
+        for( var i=touches.length-1; i>=0; i-- ) {
+            playerActions.endAction(touches[i].identifier);
+        }
+    }
+
+    var canvas = document.getElementById("gameCanvas");
+    canvas.addEventListener("touchstart", touchStart);
+    canvas.addEventListener("touchend", touchEnd);
+    canvas.addEventListener("touchcancel", touchEnd);
 
 ## Исходный код
 
 [Страница с исходным кодом](https://github.com/yourlx/jsinvaders)
+
+Гайд ялвяется вольной адаптацией [оригинальной статьи](https://www.briankoponen.com/html5-javascript-game-tutorial/).
